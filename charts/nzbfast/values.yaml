@@ -1,0 +1,363 @@
+# Default values for nzbfast.
+#
+# nzbfast keeps TWO files in /config, and this chart can own either or both:
+#
+#   config.json    Usenet servers + credentials. Small, stable, secret.
+#   settings.json  Everything the dashboard's Settings screens write. Also
+#                  holds generated runtime state (the API key, indexer
+#                  bookkeeping, counters), which is why the default mode
+#                  MERGES rather than overwrites — see `settings.mode`.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/nzbfast/nzbfast
+  tag: "1.4.0"
+  # Pin by digest for immutability; takes precedence over tag when set.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# Identity
+# ---------------------------------------------------------------------------
+# The upstream entrypoint starts as root, chowns /config /downloads /watch
+# /incomplete to puid:pgid, then drops to that uid with gosu. That needs the
+# five capabilities in `securityContext.capabilities.add` below.
+#
+# Set `rootless: true` to skip that entirely: the pod runs as puid:pgid from
+# the start, no capabilities, and you are responsible for the volumes already
+# being writable by that uid (an fsGroup usually does it).
+puid: 65534
+pgid: 65534
+rootless: false
+
+# TZ for the container. nzbfast stores timestamps as UTC and the dashboard
+# renders them in the *browser's* timezone, so this changes very little —
+# it only affects log lines and post-processing scripts.
+timezone: ""
+
+# ---------------------------------------------------------------------------
+# API key
+# ---------------------------------------------------------------------------
+# Sonarr/Radarr/nzb360 authenticate with this. Leave everything empty and
+# nzbfast generates a key on first start into /config/apikey — fine, but the
+# value is then not in Git and not reproducible across a PVC wipe.
+apiKey:
+  # Inline value. Only sensible when values themselves come from a
+  # SOPS-encrypted Secret, or via Flux `valuesFrom`.
+  value: ""
+  # Or point at a key in a Secret you already manage.
+  existingSecret: ""
+  existingSecretKey: apikey
+  # Run with NO API key at all (NZBFAST_OPEN=1). The control API is then open
+  # to anything that can reach the Service. Only with a private ingress.
+  open: false
+
+# ---------------------------------------------------------------------------
+# config.json — Usenet servers
+# ---------------------------------------------------------------------------
+config:
+  # enforce  Rewrite config.json from these values on every pod start.
+  #          Git is the source of truth; server edits made in the UI are
+  #          reverted on the next restart.
+  # seed     Write config.json only if it does not already exist, then leave
+  #          it alone. The UI owns servers after first start.
+  # disabled Never touch config.json (you are mounting it some other way).
+  mode: enforce
+
+  # Supply the whole file from a Secret you manage (SOPS, ESO, sealed-secrets)
+  # instead of rendering it from `servers` below. Wins over `servers`.
+  existingSecret: ""
+  existingSecretKey: config.json
+
+  # Optional TMDb key for artwork/metadata enrichment.
+  tmdbKey: ""
+
+  # One entry per Usenet account. `host` is the only required field.
+  #
+  # nzbfast uses several accounts together rather than as a plain failover
+  # chain: `level` 0 servers are the primary pool, higher levels are only
+  # asked for what the pool could not supply. Metered block accounts should
+  # sit at a higher level than unlimited ones so they are only billed for
+  # genuine fills.
+  #
+  #   host             NNTP hostname                            (required)
+  #   port             563 for TLS, 119 plain                   (default 563)
+  #   tls              default true
+  #   username         omit for accounts that need no auth
+  #   password         see the note above about where to put this
+  #   connections      max simultaneous connections for this account
+  #   level            0 = primary pool; 1,2,… = fill-only tiers  (default 0)
+  #   enabled          default true; false parks it without deleting it
+  #   retention_days   provider retention, informational for planning
+  #   block_account    true for metered/block accounts
+  #   block_bytes      remaining block bytes, for the dashboard gauge
+  #   group            backbone grouping — accounts sharing a backbone are
+  #                    not raced against each other
+  #   pin_connections  don't let the autotuner reduce `connections`
+  #   warm_pool        keep connections warm between jobs
+  #   address_family   auto | ipv4 | ipv6
+  #   tls_hostname     override SNI/cert hostname
+  #   bind_ip, socks5, rcvbuf, idle_keep, idle_release_secs,
+  #   max_source_ips, warm_reserve — see the chart README
+  servers: []
+  # - host: news.newshosting.com
+  #   port: 563
+  #   tls: true
+  #   username: "someone"
+  #   password: "CHANGEME"
+  #   connections: 30
+  #   level: 0
+  #   retention_days: 5900
+  # - host: news.eweka.nl
+  #   port: 563
+  #   tls: true
+  #   username: "someone"
+  #   password: "CHANGEME"
+  #   connections: 20
+  #   level: 1
+  #   retention_days: 5900
+
+# ---------------------------------------------------------------------------
+# settings.json — everything the Settings screens write
+# ---------------------------------------------------------------------------
+settings:
+  # merge    (default) Deep-merge `settings.values` over the settings.json
+  #          already on disk on every pod start. Keys you set here are
+  #          declarative; every other key — including the generated API key,
+  #          indexer bookkeeping and counters — survives untouched.
+  #          Requires the `mergeTool` image below.
+  # enforce  Replace settings.json wholesale with `settings.values`.
+  #          DESTRUCTIVE: nzbfast stores generated runtime state in this file,
+  #          so this discards the API key it made for itself, indexer
+  #          coverage bookkeeping and history counters on every restart.
+  #          Only use it if `settings.values` is a complete, known-good file.
+  # seed     Write settings.json only if absent; the UI owns it thereafter.
+  # disabled Never touch settings.json.
+  mode: merge
+
+  # Supply the whole file from a Secret you manage. Wins over `values`.
+  existingSecret: ""
+  existingSecretKey: settings.json
+
+  # Any key nzbfast persists in settings.json. The chart does not validate
+  # names — an unknown key is written and nzbfast ignores it — so check the
+  # spelling against the Settings screen or the chart README table.
+  #
+  # Examples:
+  #   speedlimit: 0                    # KB/s, 0 = unlimited
+  #   min_free: 5368709120             # pause below 5 GiB free
+  #   auto_connections: true           # let nzbfast tune connection counts
+  #   verify_mode: full
+  #   auto_rename: true
+  #   history_keep_count: 500
+  #   watch_interval_secs: 30
+  #   metrics_open: true               # unauthenticated GET /metrics
+  #   categories: "tv, movies, books"
+  values: {}
+
+  # Only used by `mode: merge`. Needs a shell and a JSON-aware merge tool;
+  # this image is Alpine-based and multi-arch.
+  mergeTool:
+    repository: ghcr.io/mikefarah/yq
+    tag: "4"
+    digest: ""
+    pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Storage
+# ---------------------------------------------------------------------------
+persistence:
+  # /config — settings.json, config.json, apikey, the index database, the
+  # queue spool. This is the install; losing it loses the API key.
+  config:
+    enabled: true
+    existingClaim: ""
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+    size: 2Gi
+    annotations: {}
+
+  # /downloads — finished files. Point this at the same claim your *arr apps
+  # import from, mounted at the SAME path on both sides, or every import
+  # copies the release instead of hardlinking it.
+  downloads:
+    enabled: true
+    existingClaim: ""
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+    size: 100Gi
+    annotations: {}
+    mountPath: /downloads
+
+  # /watch — drop an .nzb here and nzbfast picks it up.
+  watch:
+    enabled: false
+    existingClaim: ""
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+    size: 1Gi
+    annotations: {}
+    mountPath: /watch
+
+  # /incomplete — the upstream image creates this directory and its
+  # entrypoint chowns it alongside /config, /downloads and /watch. Mounting
+  # a volume here gives in-flight data its own storage, which is worth doing
+  # when /downloads is networked or slow. There is no environment variable
+  # to relocate it, so the path is fixed at /incomplete.
+  incomplete:
+    enabled: false
+    existingClaim: ""
+    storageClass: ""
+    accessModes: [ReadWriteOnce]
+    size: 50Gi
+    annotations: {}
+    mountPath: /incomplete
+
+# Extra volumes/mounts — media libraries, NFS shares, post-processing scripts.
+extraVolumes: []
+extraVolumeMounts: []
+
+# ---------------------------------------------------------------------------
+# Workload
+# ---------------------------------------------------------------------------
+# StatefulSet by default: the /config volume is the install and must not be
+# shared or reattached out from under a second replica. Deployment is offered
+# for setups that manage the PVC themselves.
+controller:
+  kind: StatefulSet
+  # nzbfast is single-instance. Two replicas against one /config corrupt it.
+  replicas: 1
+  strategy: {}
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  # Roll the pod when the rendered config/settings change.
+  restartOnConfigChange: true
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "4"
+    memory: 2Gi
+
+initResources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+podSecurityContext:
+  fsGroup: 65534
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: [ALL]
+    # Needed only for the root→puid drop the entrypoint does.
+    # Ignored when `rootless: true`.
+    add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+
+# Extra environment. `NZBFAST_*` knobs from the upstream ENVIRONMENT.md go here.
+env: {}
+extraEnv: []
+extraEnvFrom: []
+
+probes:
+  # mode=version needs no API key — the upstream image's own HEALTHCHECK
+  # uses exactly this.
+  path: "/api?mode=version&output=json"
+  startup:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+  liveness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+terminationGracePeriodSeconds: 120
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+dnsPolicy: ""
+dnsConfig: {}
+hostNetwork: false
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  automountServiceAccountToken: false
+
+# ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  # Container listens on 6789; this is the Service port.
+  port: 80
+  targetPort: 6789
+  nodePort: null
+  annotations: {}
+  labels: {}
+  loadBalancerClass: ""
+  externalTrafficPolicy: ""
+  ipFamilyPolicy: ""
+  ipFamilies: []
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: nzbfast.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# GET /metrics, Prometheus text format. Either set settings.values.metrics_open
+# to true (unauthenticated) or give Prometheus the API key.
+metrics:
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
+    relabelings: []
+    metricRelabelings: []
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: null
+  maxUnavailable: 1

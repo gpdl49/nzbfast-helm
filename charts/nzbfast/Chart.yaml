@@ -1,0 +1,23 @@
+apiVersion: v2
+name: nzbfast
+description: nzbfast — the fast Usenet (NZB) downloader, with its config.json and settings.json managed declaratively through Helm
+type: application
+version: 0.1.0
+appVersion: "1.4.0"
+kubeVersion: ">=1.25.0-0"
+keywords:
+  - nzbfast
+  - usenet
+  - nzb
+  - nntp
+  - downloader
+  - sabnzbd
+  - nzbget
+home: https://nzbfast.github.io/nzbfast/
+icon: https://raw.githubusercontent.com/nzbfast/nzbfast/main/packaging/icon/icon-1024.png
+sources:
+  - https://github.com/nzbfast/nzbfast
+  - https://github.com/vidurb/nzbfast-helm
+maintainers:
+  - name: vidurb
+    url: https://github.com/vidurb

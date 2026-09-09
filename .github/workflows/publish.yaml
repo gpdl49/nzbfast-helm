@@ -1,0 +1,98 @@
+name: Publish chart
+
+on:
+  push:
+    tags:
+      - "chart-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Chart version to publish (must match Chart.yaml)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  OCI_REGISTRY: oci://ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      # A tag that disagrees with Chart.yaml publishes an artifact whose
+      # version nobody can find again. Fail instead.
+      - name: Tag and Chart.yaml versions must agree
+        run: |
+          set -euo pipefail
+          CHART_VERSION=$(helm show chart charts/nzbfast | awk '/^version:/ {print $2}')
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            WANT="${{ github.event.inputs.version }}"
+          else
+            WANT="${GITHUB_REF_NAME#chart-v}"
+          fi
+          echo "Chart.yaml: $CHART_VERSION"
+          echo "requested:  $WANT"
+          if [ "$CHART_VERSION" != "$WANT" ]; then
+            echo "::error::Chart.yaml version ($CHART_VERSION) does not match the requested version ($WANT)."
+            exit 1
+          fi
+
+      - name: Lint
+        run: helm lint charts/nzbfast --strict
+
+      - name: Template every ci/ values file
+        run: |
+          set -euo pipefail
+          for f in charts/nzbfast/ci/*.yaml; do
+            helm template nzbfast charts/nzbfast --namespace nzbfast -f "$f" > /dev/null
+            echo "ok: $f"
+          done
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Add OCI annotations
+        run: |
+          set -euo pipefail
+          CHART=charts/nzbfast/Chart.yaml
+          REPO_URL="https://github.com/${{ github.repository }}"
+          if ! grep -q '^annotations:' "$CHART"; then
+            {
+              echo "annotations:"
+              echo "  org.opencontainers.image.source: $REPO_URL"
+              echo "  org.opencontainers.image.url: $REPO_URL/tree/${{ github.ref_name }}/charts/nzbfast"
+              echo "  org.opencontainers.image.documentation: $REPO_URL/blob/${{ github.ref_name }}/charts/nzbfast/README.md"
+              echo "  org.opencontainers.image.licenses: MIT"
+            } >> "$CHART"
+          fi
+
+      - name: Package and push
+        run: |
+          set -euo pipefail
+          helm package charts/nzbfast
+          PKG=$(ls -1 nzbfast-*.tgz)
+          echo "Pushing $PKG to ${OCI_REGISTRY}"
+          helm push "$PKG" "${OCI_REGISTRY}"
+
+      - name: Summary
+        run: |
+          CHART_VERSION=$(helm show chart charts/nzbfast | awk '/^version:/ {print $2}')
+          {
+            echo "### Published"
+            echo
+            echo '```bash'
+            echo "helm install nzbfast oci://ghcr.io/${{ github.repository_owner }}/charts/nzbfast --version $CHART_VERSION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

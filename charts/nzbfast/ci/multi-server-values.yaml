@@ -1,0 +1,60 @@
+# The shape this chart exists for: several accounts, tiered, with a block
+# account that is only billed for what the unlimited pool could not supply.
+config:
+  mode: enforce
+  servers:
+    - host: news.newshosting.com
+      port: 563
+      tls: true
+      username: primary-user
+      password: primary-pass
+      connections: 30
+      level: 0
+      retention_days: 5900
+    - host: news.eweka.nl
+      port: 563
+      tls: true
+      username: secondary-user
+      password: secondary-pass
+      connections: 20
+      level: 0
+      retention_days: 5900
+      group: omicron
+    - host: news.blocknews.net
+      port: 563
+      tls: true
+      username: block-user
+      password: block-pass
+      connections: 10
+      level: 2
+      block_account: true
+      block_bytes: 536870912000
+
+settings:
+  mode: merge
+  values:
+    speedlimit: 0
+    auto_connections: true
+    min_free: 10737418240
+    verify_mode: full
+    auto_rename: true
+    history_keep_count: 500
+    metrics_open: true
+    categories: "tv, movies, books"
+
+apiKey:
+  value: "test-api-key-not-a-real-one"
+
+persistence:
+  config:
+    size: 4Gi
+  downloads:
+    size: 200Gi
+  watch:
+    enabled: true
+  incomplete:
+    enabled: true
+
+metrics:
+  serviceMonitor:
+    enabled: true

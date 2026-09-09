@@ -1,0 +1,41 @@
+{{- if gt (int .Values.controller.replicas) 1 }}
+{{- fail "nzbfast is single-instance: two replicas against one /config volume corrupt the index and the queue spool. Set controller.replicas to 0 or 1." }}
+{{- end }}
+{{- if and (eq .Values.settings.mode "merge") (not (include "nzbfast.manageSettings" .)) }}
+{{- fail "settings.mode=merge requires settings management to be on" }}
+{{- end }}
+apiVersion: apps/v1
+kind: {{ .Values.controller.kind }}
+metadata:
+  name: {{ include "nzbfast.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nzbfast.labels" . | nindent 4 }}
+  {{- with .Values.controller.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  {{- if eq .Values.controller.kind "StatefulSet" }}
+  serviceName: {{ include "nzbfast.fullname" . }}
+  podManagementPolicy: OrderedReady
+  {{- with .Values.controller.strategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- else }}
+  {{- /* Recreate by default: a ReadWriteOnce volume cannot attach to the
+         old and new pods at once, so RollingUpdate deadlocks. */}}
+  strategy:
+    {{- if .Values.controller.strategy }}
+    {{- toYaml .Values.controller.strategy | nindent 4 }}
+    {{- else }}
+    type: Recreate
+    {{- end }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "nzbfast.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "nzbfast.podSpec" . | nindent 4 }}

@@ -1,0 +1,155 @@
+name: Validate chart
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - ".github/workflows/pr-validate.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - ".github/workflows/pr-validate.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Lint
+        run: helm lint charts/nzbfast --strict
+
+      # Every ci/*-values.yaml is one supported configuration. Rendering all of
+      # them is what catches a mode that only works in the default combination.
+      - name: Template every ci/ values file
+        run: |
+          set -euo pipefail
+          for f in charts/nzbfast/ci/*.yaml; do
+            echo "::group::$f"
+            helm template nzbfast charts/nzbfast --namespace nzbfast -f "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Lint against every ci/ values file
+        run: |
+          set -euo pipefail
+          for f in charts/nzbfast/ci/*.yaml; do
+            echo "Linting with $f"
+            helm lint charts/nzbfast --strict -f "$f"
+          done
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
+
+      - name: Validate rendered manifests against the Kubernetes schemas
+        run: |
+          set -euo pipefail
+          for f in charts/nzbfast/ci/*.yaml; do
+            echo "::group::kubeconform $f"
+            helm template nzbfast charts/nzbfast --namespace nzbfast -f "$f" \
+              | kubeconform -strict -summary -ignore-missing-schemas \
+                  -kubernetes-version 1.31.0
+            echo "::endgroup::"
+          done
+
+      # The whole point of the chart: the two files it renders must be valid
+      # JSON, because nzbfast parses them with serde and will not start on a
+      # malformed config.json.
+      - name: Rendered config.json and settings.json must be valid JSON
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          python3 - <<'PY'
+          import json, subprocess, sys, glob, yaml
+
+          failures = []
+          for vals in sorted(glob.glob("charts/nzbfast/ci/*.yaml")):
+              out = subprocess.run(
+                  ["helm", "template", "nzbfast", "charts/nzbfast",
+                   "--namespace", "nzbfast", "-f", vals],
+                  capture_output=True, text=True, check=True).stdout
+              found = 0
+              for doc in yaml.safe_load_all(out):
+                  if not doc or doc.get("kind") != "Secret":
+                      continue
+                  for key, body in (doc.get("stringData") or {}).items():
+                      if not key.endswith(".json"):
+                          continue
+                      found += 1
+                      try:
+                          json.loads(body)
+                      except json.JSONDecodeError as e:
+                          failures.append(f"{vals}: {doc['metadata']['name']}/{key}: {e}")
+              print(f"{vals}: {found} JSON file(s) checked")
+          if failures:
+              print("\nFAILURES:")
+              for f in failures:
+                  print(" ", f)
+              sys.exit(1)
+          print("all rendered JSON parses")
+          PY
+
+      # settings.mode=merge is the default and it must never drop the API key
+      # nzbfast generated for itself. Run the real merge expression from the
+      # init container against a file that looks like a live install.
+      - name: settings merge must preserve runtime state
+        run: |
+          set -euo pipefail
+          if ! command -v yq >/dev/null 2>&1; then
+            sudo curl -sSLo /usr/local/bin/yq \
+              https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          yq --version
+
+          cat > /tmp/ondisk.json <<'JSON'
+          {
+            "apikey": "GENERATED-BY-NZBFAST",
+            "speedlimit": 99999,
+            "history_keep_count": 100,
+            "index_coverage": {"alt.binaries.tv": 12345},
+            "jobs_ever": 4211
+          }
+          JSON
+          cat > /tmp/helm.json <<'JSON'
+          {
+            "speedlimit": 0,
+            "history_keep_count": 500,
+            "verify_mode": "full"
+          }
+          JSON
+
+          yq -o=json -P eval-all '. as $item ireduce ({}; . * $item)' \
+            /tmp/ondisk.json /tmp/helm.json > /tmp/merged.json
+          cat /tmp/merged.json
+
+          python3 - <<'PY'
+          import json, sys
+          m = json.load(open("/tmp/merged.json"))
+          checks = {
+              "apikey preserved":            m.get("apikey") == "GENERATED-BY-NZBFAST",
+              "jobs_ever preserved":         m.get("jobs_ever") == 4211,
+              "index_coverage preserved":    m.get("index_coverage", {}).get("alt.binaries.tv") == 12345,
+              "speedlimit overridden":       m.get("speedlimit") == 0,
+              "history_keep_count overridden": m.get("history_keep_count") == 500,
+              "new key added":               m.get("verify_mode") == "full",
+          }
+          for name, ok in checks.items():
+              print(("PASS  " if ok else "FAIL  ") + name)
+          sys.exit(0 if all(checks.values()) else 1)
+          PY

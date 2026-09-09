@@ -1,0 +1,28 @@
+# Deployment form, chart touches neither config file, ingress on.
+controller:
+  kind: Deployment
+config:
+  mode: disabled
+settings:
+  mode: disabled
+apiKey:
+  open: true
+persistence:
+  config:
+    enabled: false
+  downloads:
+    enabled: false
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: nzbfast.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: nzbfast-tls
+      hosts:
+        - nzbfast.example.com
+podDisruptionBudget:
+  enabled: true

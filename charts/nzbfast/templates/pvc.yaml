@@ -1,0 +1,27 @@
+{{- range $key, $p := .Values.persistence }}
+{{- if and $p.enabled (not $p.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-%s" (include "nzbfast.fullname" $) $key }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "nzbfast.labels" $ | nindent 4 }}
+    app.kubernetes.io/volume: {{ $key }}
+  annotations:
+    helm.sh/resource-policy: keep
+    {{- with $p.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- toYaml $p.accessModes | nindent 4 }}
+  {{- if $p.storageClass }}
+  storageClassName: {{ $p.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size | quote }}
+{{- end }}
+{{- end }}

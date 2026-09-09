@@ -1,0 +1,46 @@
+nzbfast {{ .Chart.AppVersion }} is installing as {{ include "nzbfast.fullname" . }}.
+
+Reach the dashboard:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "nzbfast.fullname" . }} -w
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "nzbfast.fullname" . }} 6789:{{ .Values.service.port }}
+  then open http://127.0.0.1:6789
+{{- end }}
+
+In-cluster address for Sonarr/Radarr/Prowlarr — add it as a *SABnzbd*
+download client, host below, port {{ .Values.service.port }}:
+
+  {{ include "nzbfast.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local
+
+API key:
+{{- if .Values.apiKey.open }}
+  NONE. This release runs with NZBFAST_OPEN=1, so anything that can reach the
+  Service can drive the queue. Make sure that is what you meant.
+{{- else if or .Values.apiKey.value .Values.apiKey.existingSecret }}
+  from Secret {{ include "nzbfast.apiKeySecretName" . }}, key {{ .Values.apiKey.existingSecretKey }}.
+{{- else }}
+  nzbfast generated one for itself. Read it back with:
+  kubectl -n {{ .Release.Namespace }} exec {{ if eq .Values.controller.kind "StatefulSet" }}{{ include "nzbfast.fullname" . }}-0{{ else }}deploy/{{ include "nzbfast.fullname" . }}{{ end }} -- cat /config/apikey
+{{- end }}
+
+Config files:
+  config.json    mode={{ .Values.config.mode }}{{ if .Values.config.existingSecret }} (from Secret {{ .Values.config.existingSecret }}){{ else }} ({{ len .Values.config.servers }} server(s) from values){{ end }}
+  settings.json  mode={{ .Values.settings.mode }}{{ if .Values.settings.existingSecret }} (from Secret {{ .Values.settings.existingSecret }}){{ else }} ({{ len (keys .Values.settings.values) }} key(s) from values){{ end }}
+{{- if eq .Values.settings.mode "enforce" }}
+
+  WARNING: settings.mode=enforce replaces settings.json on every pod start.
+  nzbfast keeps generated state in that file (its own API key, indexer
+  bookkeeping, history counters) and all of it is discarded each restart.
+  Use settings.mode=merge unless settings.values is a complete known-good file.
+{{- end }}
+{{- if and (not .Values.config.existingSecret) (not .Values.config.servers) (ne .Values.config.mode "off") }}
+
+  NOTE: no Usenet servers are configured, so config.json has an empty server
+  list and nothing will download. Set config.servers, or point
+  config.existingSecret at a Secret holding a complete config.json.
+{{- end }}

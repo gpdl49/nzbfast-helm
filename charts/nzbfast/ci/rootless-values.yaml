@@ -1,0 +1,11 @@
+# No root, no capabilities. Volumes must already be writable by puid:pgid.
+rootless: true
+puid: 1000
+pgid: 1000
+podSecurityContext:
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+settings:
+  mode: merge
+  values:
+    speedlimit: 5000
