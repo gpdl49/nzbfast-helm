@@ -140,8 +140,12 @@ spec:
     runAsUser: {{ .Values.puid }}
     runAsGroup: {{ .Values.pgid }}
     {{- end }}
-  {{- if or (include "nzbfast.manageConfig" .) (include "nzbfast.manageSettings" .) }}
+  {{- if or (include "nzbfast.manageConfig" .) (include "nzbfast.manageSettings" .) .Values.extraInitContainers }}
   initContainers:
+    {{- with .Values.extraInitContainers }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if or (include "nzbfast.manageConfig" .) (include "nzbfast.manageSettings" .) }}
     - name: place-config
       {{- if eq .Values.settings.mode "merge" }}
       image: {{ include "nzbfast.mergeToolImage" . }}
@@ -180,6 +184,7 @@ spec:
           mountPath: /helm/settings
           readOnly: true
         {{- end }}
+    {{- end }}
   {{- end }}
   containers:
     - name: nzbfast

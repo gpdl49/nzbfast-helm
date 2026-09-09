@@ -214,6 +214,45 @@ yourself (`podSecurityContext.fsGroup` normally does it).
 PVCs the chart creates carry `helm.sh/resource-policy: keep`, so
 `helm uninstall` does not delete your downloads.
 
+## Download paths
+
+nzbfast separates the working directory from the final destination, which maps
+onto NZBGet's `InterDir`/`DestDir`:
+
+| nzbfast | Set via | Equivalent |
+|---|---|---|
+| out dir | `persistence.downloads.mountPath` (becomes `NZBFAST_OUT`) | NZBGet `InterDir` |
+| `move_completed` | `settings.values.move_completed` (absolute path) | NZBGet `DestDir` |
+| `move_completed_cats` | `settings.values`, `"cat=/abs/path, cat2=/abs/path2"` | NZBGet `CategoryN.DestDir` |
+
+So: point `persistence.downloads` at a fast local volume, and
+`move_completed` at the library share your *arr apps import from. The finished
+release is moved there in one bulk copy at the end.
+
+`write_through: true` writes straight to the destination instead, skipping the
+move. Upstream advises against it for network shares — it pays per-write
+latency across the whole download rather than one bulk copy.
+
+## Extra init containers
+
+`extraInitContainers` runs before the chart's own config-placing one. This is
+where shared-media permission fixing goes when several apps write to one
+volume as different uids:
+
+```yaml
+extraInitContainers:
+  - name: fix-media-permissions
+    image: busybox:latest
+    command: [/bin/sh, -c]
+    args:
+      - |
+        chown root:65534 /media /media/library
+        chmod 2775 /media /media/library
+    volumeMounts:
+      - name: media
+        mountPath: /media/
+```
+
 ## Connecting Sonarr/Radarr
 
 nzbfast speaks the SABnzbd API. Add it as a **SABnzbd** download client:

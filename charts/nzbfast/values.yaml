@@ -221,6 +221,11 @@ persistence:
 extraVolumes: []
 extraVolumeMounts: []
 
+# Init containers to run BEFORE the chart's own config-placing one. Use this
+# for shared-media permission fixing, or anything that must exist before the
+# daemon starts. Raw container specs, passed through verbatim.
+extraInitContainers: []
+
 # ---------------------------------------------------------------------------
 # Workload
 # ---------------------------------------------------------------------------

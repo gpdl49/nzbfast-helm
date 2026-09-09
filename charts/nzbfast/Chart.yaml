@@ -2,7 +2,7 @@ apiVersion: v2
 name: nzbfast
 description: nzbfast — the fast Usenet (NZB) downloader, with its config.json and settings.json managed declaratively through Helm
 type: application
-version: 0.1.0
+version: 0.1.1
 appVersion: "1.4.0"
 kubeVersion: ">=1.25.0-0"
 keywords:
