@@ -5,7 +5,7 @@ downloader — packaged so its `config.json` and `settings.json` can be managed
 declaratively instead of only through the dashboard.
 
 ```bash
-helm install nzbfast oci://ghcr.io/vidurb/charts/nzbfast
+helm install nzbfast oci://ghcr.io/gpdl49/charts/nzbfast
 ```
 
 Chart documentation, values reference and the per-server field table:
@@ -49,7 +49,7 @@ git push origin chart-v0.1.0
 ```
 
 The workflow packages the chart and pushes it to
-`oci://ghcr.io/vidurb/charts/nzbfast`. The tag version and the `Chart.yaml`
+`oci://ghcr.io/gpdl49/charts/nzbfast`. The tag version and the `Chart.yaml`
 version must match; the workflow fails if they do not.
 
 ## Licence

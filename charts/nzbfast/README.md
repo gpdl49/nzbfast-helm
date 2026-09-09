@@ -4,7 +4,7 @@ Runs [nzbfast](https://github.com/nzbfast/nzbfast) on Kubernetes and makes its
 two on-disk config files declarative.
 
 ```bash
-helm install nzbfast oci://ghcr.io/vidurb/charts/nzbfast
+helm install nzbfast oci://ghcr.io/gpdl49/charts/nzbfast
 ```
 
 ## Why this chart exists

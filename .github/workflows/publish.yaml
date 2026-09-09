@@ -15,7 +15,10 @@ permissions:
   packages: write
 
 env:
-  OCI_REGISTRY: oci://ghcr.io/${{ github.repository_owner }}/charts
+  # Charts live under the gpdl49 org, not this repo's owner, matching
+  # where the homestacks servarr charts publish.
+  OCI_ORG: gpdl49
+  OCI_REGISTRY: oci://ghcr.io/gpdl49/charts
 
 jobs:
   publish:
@@ -58,10 +61,23 @@ jobs:
             echo "ok: $f"
           done
 
+      # GITHUB_TOKEN is scoped to this repository's owner, so it can only push
+      # into the gpdl49 namespace if that org has granted this repo write
+      # access to the package. For a package that does not exist yet it cannot,
+      # so GHCR_TOKEN (a PAT with write:packages on gpdl49) takes precedence
+      # when set.
       - name: Log in to GHCR
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" \
-            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          set -euo pipefail
+          if [ -n "${{ secrets.GHCR_TOKEN }}" ]; then
+            echo "Using GHCR_TOKEN"
+            echo "${{ secrets.GHCR_TOKEN }}" \
+              | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          else
+            echo "GHCR_TOKEN not set; falling back to GITHUB_TOKEN"
+            echo "${{ secrets.GITHUB_TOKEN }}" \
+              | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          fi
 
       - name: Add OCI annotations
         run: |
@@ -93,6 +109,6 @@ jobs:
             echo "### Published"
             echo
             echo '```bash'
-            echo "helm install nzbfast oci://ghcr.io/${{ github.repository_owner }}/charts/nzbfast --version $CHART_VERSION"
+            echo "helm install nzbfast oci://ghcr.io/gpdl49/charts/nzbfast --version $CHART_VERSION"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
