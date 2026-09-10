@@ -217,6 +217,31 @@ persistence:
     annotations: {}
     mountPath: /incomplete
 
+# ---------------------------------------------------------------------------
+# Where finished downloads go
+# ---------------------------------------------------------------------------
+# By default NZBFAST_OUT is persistence.downloads.mountPath. Set outDir to
+# decouple the two — when the finished-files directory lives INSIDE another
+# mount (a media share supplied through extraVolumes, say) rather than being
+# a volume of its own.
+#
+# This is the setting that matters for Sonarr/Radarr. nzbfast reports out_dir
+# — not `move_completed` — to the SABnzbd and NZBGet APIs as `complete_dir` /
+# `DestDir`, per category. So the *arr apps are told `<outDir>/<category>`,
+# and if they cannot see that path at that exact path they raise
+# "places downloads in X but this directory does not appear to exist".
+#
+# Two ways to satisfy them:
+#   1. Put outDir on storage the *arr apps also mount, at the SAME path.
+#   2. Keep outDir on fast local scratch, use settings.values.move_completed
+#      to land finished releases on the shared library filesystem, and add a
+#      Remote Path Mapping in each *arr app from outDir to that destination.
+#      Heavier IO stays on the fast disk; only a sequential copy crosses.
+outDir: ""
+
+# Likewise for NZBFAST_WATCH; defaults to persistence.watch.mountPath.
+watchDir: ""
+
 # Extra volumes/mounts — media libraries, NFS shares, post-processing scripts.
 extraVolumes: []
 extraVolumeMounts: []

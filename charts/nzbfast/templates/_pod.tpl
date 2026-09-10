@@ -202,9 +202,9 @@ spec:
         - name: NZBFAST_PORT
           value: {{ .Values.service.targetPort | quote }}
         - name: NZBFAST_OUT
-          value: {{ .Values.persistence.downloads.mountPath | quote }}
+          value: {{ default .Values.persistence.downloads.mountPath .Values.outDir | quote }}
         - name: NZBFAST_WATCH
-          value: {{ .Values.persistence.watch.mountPath | quote }}
+          value: {{ default .Values.persistence.watch.mountPath .Values.watchDir | quote }}
         {{- if not .Values.persistence.config.enabled }}
         # /config is an emptyDir here, so silence the "your settings will be
         # deleted with this container" warning the entrypoint prints.

@@ -1,0 +1,18 @@
+# out_dir living inside a shared media mount rather than being its own volume:
+# the shape the *arr apps need when they must see the finished-files path at
+# the same path nzbfast reports.
+persistence:
+  downloads:
+    enabled: false
+outDir: /media/downloads/complete
+extraVolumes:
+  - name: media
+    persistentVolumeClaim:
+      claimName: shared-media
+extraVolumeMounts:
+  - name: media
+    mountPath: /media/
+settings:
+  mode: merge
+  values:
+    categories: "tv, movies"

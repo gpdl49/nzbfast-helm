@@ -216,18 +216,71 @@ PVCs the chart creates carry `helm.sh/resource-policy: keep`, so
 
 ## Download paths
 
-nzbfast separates the working directory from the final destination, which maps
-onto NZBGet's `InterDir`/`DestDir`:
+**Read this before wiring up Sonarr/Radarr.** nzbfast has ONE download
+directory, `out_dir`. It decodes, verifies and extracts there in a single
+pass; there is no intermediate directory (`/incomplete` exists in the image
+but nothing in nzbfast uses it).
 
-| nzbfast | Set via | Equivalent |
-|---|---|---|
-| out dir | `persistence.downloads.mountPath` (becomes `NZBFAST_OUT`) | NZBGet `InterDir` |
-| `move_completed` | `settings.values.move_completed` (absolute path) | NZBGet `DestDir` |
-| `move_completed_cats` | `settings.values`, `"cat=/abs/path, cat2=/abs/path2"` | NZBGet `CategoryN.DestDir` |
+| nzbfast | Set via |
+|---|---|
+| `out_dir` | `outDir`, else `persistence.downloads.mountPath` (becomes `NZBFAST_OUT`) |
+| `move_completed` | `settings.values.move_completed` (absolute path) |
+| `move_completed_cats` | `settings.values`, `"cat=/abs/path, cat2=/abs/path2"` |
 
-So: point `persistence.downloads` at a fast local volume, and
-`move_completed` at the library share your *arr apps import from. The finished
-release is moved there in one bulk copy at the end.
+### The trap
+
+nzbfast reports **`out_dir`**, not `move_completed`, to the SABnzbd and NZBGet
+APIs as `complete_dir` / `DestDir`, with the category appended. So an *arr app
+is told `<out_dir>/<category>`. If it cannot see that path, at that exact
+path, you get:
+
+> Remote download client places downloads in `/x/y` but this directory does
+> not appear to exist. Likely missing or incorrect remote path mapping.
+
+This is easy to hit if you map NZBGet's `InterDir`/`DestDir` onto
+`out_dir`/`move_completed` — the analogy is tempting and wrong, because
+NZBGet reports `DestDir` while nzbfast reports its `out_dir`.
+
+Two correct setups:
+
+**1. Shared `out_dir`** — put `out_dir` on storage the *arr apps also mount,
+at the same path. Use `outDir` when it sits inside another mount:
+
+```yaml
+persistence:
+  downloads:
+    enabled: false
+outDir: /media/downloads/complete
+extraVolumes:
+  - name: media
+    persistentVolumeClaim: { claimName: shared-media }
+extraVolumeMounts:
+  - name: media
+    mountPath: /media/
+```
+
+Simplest, and hardlink imports work when the library is on the same
+filesystem. Best when that storage is already fast.
+
+**2. Fast scratch + `move_completed` + a remote path mapping** — keep
+`out_dir` on local scratch and land finished releases on the shared library
+filesystem:
+
+```yaml
+persistence:
+  downloads:
+    storageClass: fast-scratch
+    mountPath: /mnt/downloads
+settings:
+  values:
+    move_completed: /mnt/media/Downloads/completed
+```
+
+then in each *arr app, Settings → Download Clients → Remote Path Mapping:
+Remote `/mnt/downloads/` → Local `/mnt/media/Downloads/completed/`. Worth it
+when the library is on a network share: decode, verify and extract stay on the
+fast disk and only a sequential copy crosses the network. Costs one mapping
+per *arr app.
 
 `write_through: true` writes straight to the destination instead, skipping the
 move. Upstream advises against it for network shares — it pays per-write
