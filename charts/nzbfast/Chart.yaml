@@ -17,7 +17,7 @@ home: https://nzbfast.github.io/nzbfast/
 icon: https://raw.githubusercontent.com/nzbfast/nzbfast/main/packaging/icon/icon-1024.png
 sources:
   - https://github.com/nzbfast/nzbfast
-  - https://github.com/vidurb/nzbfast-helm
+  - https://github.com/gpdl49/nzbfast-helm
 maintainers:
   - name: vidurb
     url: https://github.com/vidurb
