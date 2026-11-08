@@ -1,0 +1,12 @@
+# Workflow lint in pre-commit: catch real breakage without forcing a CI redesign.
+profile: default
+rules:
+  concurrency-limits: warn
+  missing-timeout: warn
+  unpinned-uses: warn
+  artipacked: warn
+  excessive-permissions: warn
+  unverified-download: warn
+  template-injection: warn
+  pipeline-without-pipefail: warn
+  shellcheck: warn

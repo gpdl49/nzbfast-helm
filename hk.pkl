@@ -1,0 +1,41 @@
+/// Git hooks for chart and workflow validation.
+amends "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Config.pkl"
+
+import "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Builtins.pkl"
+
+local fast = new Mapping<String, Step> {
+  // Helm templates mix Go templating with YAML; lint plain YAML only (no mass reformat).
+  ["yamllint"] = new Step {
+    glob = List(
+      "charts/**/values.yaml",
+      "charts/**/Chart.yaml",
+      "charts/**/ci/*.yaml",
+    )
+    check = "yamllint --strict {{files}}"
+  }
+  ["jactionlint"] = Builtins.jactionlint
+  ["helm-lint"] = new Step {
+    glob = List("charts/**")
+    check = "scripts/hk-helm-lint.sh {{files}}"
+  }
+}
+
+hooks {
+  ["check"] {
+    steps = fast
+  }
+  ["pre-commit"] {
+    fix = true
+    stage = true
+    stash = "git"
+    steps = fast
+  }
+  ["pre-push"] {
+    steps {
+      ["kubeconform"] = new Step {
+        glob = List("charts/**")
+        check = "scripts/hk-kubeconform-matrix.sh"
+      }
+    }
+  }
+}

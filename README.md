@@ -39,6 +39,16 @@ charts/nzbfast/          the chart
   publish.yaml           package + push to GHCR on a chart-v* tag
 ```
 
+## Development
+
+Pinned tools live in [`mise.toml`](mise.toml). Install them and Git hooks ([`hk.pkl`](hk.pkl)) in one step:
+
+```bash
+mise run setup
+```
+
+Pre-commit runs **helm lint**, **yamllint** on chart YAML, and **jactionlint** on workflows. Pre-push runs the kubeconform `ci/*` matrix when chart files change. CI still owns the heavier checks (rendered JSON, yq merge) in [`.github/workflows/pr-validate.yaml`](.github/workflows/pr-validate.yaml).
+
 ## Releasing
 
 Bump `version` in `charts/nzbfast/Chart.yaml`, then:
