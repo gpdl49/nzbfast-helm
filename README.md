@@ -39,6 +39,17 @@ charts/nzbfast/          the chart
   publish.yaml           package + push to GHCR on a chart-v* tag
 ```
 
+## Development
+
+CI validates the chart with Helm **3.16.4**, kubeconform **0.6.7**, and yq **4.44.3**. The same CLIs are pinned in [`mise.toml`](mise.toml):
+
+```bash
+mise install
+helm lint charts/nzbfast --strict
+```
+
+For the full PR validation steps (schema check, rendered JSON, settings merge), see [`.github/workflows/pr-validate.yaml`](.github/workflows/pr-validate.yaml).
+
 ## Releasing
 
 Bump `version` in `charts/nzbfast/Chart.yaml`, then:

@@ -1,0 +1,11 @@
+# CLIs pinned to match .github/workflows/{pr-validate,publish}.yaml
+min_version = "2024.11.0"
+
+[tools]
+helm = "3.16.4"
+kubeconform = "0.6.7"
+yq = "4.44.3"
+
+[tasks.setup]
+description = "Install pinned chart validation CLIs"
+run = "mise install"
