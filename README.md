@@ -41,14 +41,13 @@ charts/nzbfast/          the chart
 
 ## Development
 
-CI validates the chart with Helm **3.16.4**, kubeconform **0.6.7**, and yq **4.44.3**. The same CLIs are pinned in [`mise.toml`](mise.toml):
+Pinned tools live in [`mise.toml`](mise.toml). Install them and Git hooks ([`hk.pkl`](hk.pkl)) in one step:
 
 ```bash
-mise install
-helm lint charts/nzbfast --strict
+mise run setup
 ```
 
-For the full PR validation steps (schema check, rendered JSON, settings merge), see [`.github/workflows/pr-validate.yaml`](.github/workflows/pr-validate.yaml).
+Pre-commit runs **helm lint**, **yamllint** on chart YAML, and **jactionlint** on workflows. Pre-push runs the kubeconform `ci/*` matrix when chart files change. CI still owns the heavier checks (rendered JSON, yq merge) in [`.github/workflows/pr-validate.yaml`](.github/workflows/pr-validate.yaml).
 
 ## Releasing
 
